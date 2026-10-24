@@ -1,0 +1,16 @@
+// zapret-dy: разрешить пользователю @USER@ запускать/останавливать zapret-dy@<стратегия>.service
+// без пароля. Только для этих юнитов, только start/stop/restart и только в активной
+// локальной сессии. Ставится scripts/install.sh, который подставляет имя пользователя.
+polkit.addRule(function (action, subject) {
+    if (action.id !== "org.freedesktop.systemd1.manage-units") {
+        return polkit.Result.NOT_HANDLED;
+    }
+    var unit = action.lookup("unit");
+    var verb = action.lookup("verb");
+    if (subject.user === "@USER@" && subject.local && subject.active &&
+        typeof unit === "string" && /^zapret-dy@[a-z0-9-]+\.service$/.test(unit) &&
+        (verb === "start" || verb === "stop" || verb === "restart")) {
+        return polkit.Result.YES;
+    }
+    return polkit.Result.NOT_HANDLED;
+});

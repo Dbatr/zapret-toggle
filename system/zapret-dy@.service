@@ -1,0 +1,24 @@
+# zapret (nfqws) только для YouTube и Discord. %i — slug стратегии из /opt/zapret-dy/strategies.
+#
+# Секции [Install] нет намеренно: юнит нельзя включить в автозагрузку,
+# он запускается только вручную (кнопкой в zapret-toggle через polkit).
+[Unit]
+Description=zapret DPI bypass for YouTube and Discord (strategy %i)
+Documentation=https://github.com/bol-van/zapret
+After=network.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+ExecStartPre=/opt/zapret-dy/firewall.sh up %i
+ExecStart=/opt/zapret-dy/run.sh %i
+# Выполняется всегда, в том числе после падения nfqws или ошибки ExecStartPre.
+ExecStopPost=/opt/zapret-dy/firewall.sh down
+Restart=on-failure
+RestartSec=2
+
+ProtectHome=yes
+PrivateTmp=yes
+ProtectSystem=full
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW CAP_SETUID CAP_SETGID
