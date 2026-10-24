@@ -13,4 +13,4 @@
 - Источник: https://github.com/Flowseal/zapret-discord-youtube
 - Коммит: `176f56dc3f11ce5915c26abcdde903f93d835b64` (файл `flowseal/COMMIT`)
 - Взято: `general*.bat` (стратегии для winws.exe), `lists/*.txt`, `bin/*.bin` → `fake/*.bin`
-- Лицензия: MIT (Flowseal), сами стратегии и фейковые пакеты — оттуда же
+- Лицензия: MIT (`LICENSE.txt` в репозитории Flowseal)
