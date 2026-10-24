@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Zapret Toggle
+GenericName=Обход DPI для YouTube и Discord
+Comment=Включить или выключить zapret для YouTube и Discord одной кнопкой
+Exec=zapret-toggle
+Icon=zapret-toggle
+Terminal=false
+Categories=Network;
+Keywords=zapret;dpi;youtube;discord;vpn;
+StartupNotify=true
+StartupWMClass=Zapret Toggle
