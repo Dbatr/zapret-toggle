@@ -8,5 +8,5 @@ Icon=zapret-toggle
 Terminal=false
 Categories=Network;
 Keywords=zapret;dpi;youtube;discord;vpn;
-StartupNotify=true
+StartupNotify=false
 StartupWMClass=Zapret Toggle

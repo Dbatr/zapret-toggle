@@ -27,6 +27,7 @@ import (
 	"zapret-toggle/assets"
 	"zapret-toggle/internal/config"
 	"zapret-toggle/internal/service"
+	"zapret-toggle/internal/startupnotify"
 	"zapret-toggle/internal/strategies"
 )
 
@@ -101,6 +102,11 @@ func New(a fyne.App) *Window {
 func (w *Window) Run() {
 	w.win.SetCloseIntercept(w.requestClose)
 	w.app.Lifecycle().SetOnStarted(func() {
+		// Окно показано — гасим курсор «загрузка» GNOME (до запуска systemctl, чтобы
+		// DESKTOP_STARTUP_ID не достался дочерним процессам).
+		if err := startupnotify.Complete(); err != nil {
+			log.Print(err)
+		}
 		go w.handleSignals()
 		if w.installErr == nil {
 			go w.statusLoop()

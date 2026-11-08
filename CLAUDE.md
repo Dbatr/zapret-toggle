@@ -6,7 +6,10 @@
 ## Архитектура
 
 - `cmd/zapret-toggle` — точка входа; app ID `zapret-toggle` = имя .desktop (Wayland app_id),
-  X11 WM_CLASS = `Zapret Toggle` (= `StartupWMClass`).
+  X11 WM_CLASS = `Zapret Toggle` (= `StartupWMClass`). GNOME Shell 51 передаёт DESKTOP_STARTUP_ID
+  даже при `StartupNotify=false`, а X11-бэкенд GLFW startup notification не завершает — курсор «загрузка»
+  крутился до таймаута. Поэтому `internal/startupnotify` (cgo, libX11) в `OnStarted` шлёт X11-сообщение
+  `remove: ID="…"` (_NET_STARTUP_INFO_BEGIN/_NET_STARTUP_INFO по 20 байт), как GTK.
 - `internal/service` — `systemctl` через exec, без root (polkit). `Start` сначала останавливает
   другие `zapret-dy@*` (общие таблица nft и очередь 200), после `start` ~1.5 с следит, что юнит
   не ушёл в failed/auto-restart (Type=simple отвечает «ок» до разбора аргументов nfqws).
