@@ -11,8 +11,15 @@
   другие `zapret-dy@*` (общие таблица nft и очередь 200), после `start` ~1.5 с следит, что юнит
   не ушёл в failed/auto-restart (Type=simple отвечает «ок» до разбора аргументов nfqws).
 - `internal/strategies` — `/opt/zapret-dy/strategies/index.txt` (`<slug>\t<имя .bat>`).
-- `internal/config` — `~/.config/zapret-toggle/config.json`: `strategy`, `stop_on_close` (по умолчанию true).
-- `internal/ui` — окно 320x420, `PowerButton` (canvas.Circle/Arc + Tappable). Состояние окна
+- `internal/config` — `~/.config/zapret-toggle/config.json`: `strategy`, `stop_on_close` (по умолчанию true),
+  `theme` (`dark`/`light`, пусто — как в системе).
+- `internal/ui` — окно со шапкой, карточкой и строкой состояния, размер свободный (по умолчанию 420x620, F11 — полный экран).
+  `theme.go` — тема Fyne: палитры graphite/paper, шрифт Geist (`assets/fonts`),
+  свои имена цветов `zt.*`. `widgets.go` — `box`/`text`/`icon`/`iconButton`: цвет берут из темы
+  в `Refresh`, поэтому смена темы перекрашивает их сама. Иконки Lucide в `icons/` рисуются через
+  stroke — Fyne перекрашивает только fill, так что цвет подставляет `iconRes`. `layouts.go` —
+  раскладки без отступов Fyne (полосы 46/30/28 px). `PowerButton` (canvas.Circle/Arc
+  + Tappable) растёт с окном от 136 до 260 px. Состояние окна
   трогается только в UI-потоке; systemctl — в горутинах, обратно через `fyne.Do`. `seq` отбрасывает
   результаты опроса (каждые 2 с), начатого до операции.
 - `system/` — то, что ставится от root в `/opt/zapret-dy` и `/etc`: `firewall.sh` (nft, таблица

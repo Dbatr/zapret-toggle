@@ -1,4 +1,6 @@
 // Package ui — окно zapret-toggle: одна большая кнопка, выбор стратегии и «выключать при закрытии».
+// Оформление: шапка и строка состояния, карточка со скруглёнными углами,
+// иконки Lucide, шрифт Geist, светлая и тёмная темы.
 //
 // Всё состояние окна меняется только в UI-потоке (колбэки Fyne и fyne.Do);
 // вызовы systemctl идут в горутинах.
@@ -16,12 +18,13 @@ import (
 	"time"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
-	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
+	"zapret-toggle/assets"
 	"zapret-toggle/internal/config"
 	"zapret-toggle/internal/service"
 	"zapret-toggle/internal/strategies"
@@ -45,8 +48,15 @@ type Window struct {
 
 	button     *PowerButton
 	status     *widget.Label
+	hint       *text
 	strategy   *widget.Select
 	stopOnExit *widget.Check
+
+	pane      *box  // рамка карточки: зелёная, пока zapret включён
+	dot       *box  // точка состояния в нижней строке
+	stateText *text // «Работает» / «Остановлено» в нижней строке
+	unitText  *text // zapret-dy@<стратегия>
+	fullBtn   *iconButton
 
 	// Только для UI-потока.
 	running        string // slug активной стратегии, "" — выключено
@@ -59,7 +69,7 @@ type Window struct {
 }
 
 func New(a fyne.App) *Window {
-	w := &Window{app: a, win: a.NewWindow("Zapret Toggle")}
+	w := &Window{app: a}
 
 	var err error
 	if w.cfgPath, err = config.Path(); err == nil {
@@ -69,6 +79,8 @@ func New(a fyne.App) *Window {
 		log.Printf("конфиг: %v (используются настройки по умолчанию)", err)
 		w.cfg = config.Default()
 	}
+	a.Settings().SetTheme(&appTheme{mode: w.cfg.Theme})
+	w.win = a.NewWindow("Zapret Toggle")
 
 	if w.installErr = service.Installed(); w.installErr == nil {
 		w.list, w.installErr = strategies.Load(strategies.Dir)
@@ -96,10 +108,9 @@ func (w *Window) build() {
 	w.status.Alignment = fyne.TextAlignCenter
 	w.status.Wrapping = fyne.TextWrapWord
 	w.status.TextStyle.Bold = true
-
-	subtitle := widget.NewLabel("YouTube · Discord")
-	subtitle.Alignment = fyne.TextAlignCenter
-	subtitle.Importance = widget.MediumImportance
+	w.status.SizeName = theme.SizeNameSubHeadingText
+	w.hint = newText("", colMuted, 12, false)
+	w.hint.align = fyne.TextAlignCenter
 
 	names := make([]string, len(w.list))
 	for i, s := range w.list {
@@ -113,34 +124,78 @@ func (w *Window) build() {
 	w.syncing = false
 
 	w.stopOnExit = widget.NewCheck("Выключать при закрытии окна", func(on bool) {
+		w.win.Canvas().Unfocus() // иначе галочка забирает F11
 		w.cfg.StopOnClose = on
 		w.saveConfig()
 	})
 	w.stopOnExit.SetChecked(w.cfg.StopOnClose)
 
-	strategyLabel := widget.NewLabel("Стратегия")
-	strategyLabel.TextStyle.Bold = true
-	bottom := container.NewVBox(
-		widget.NewSeparator(),
-		container.NewBorder(nil, nil, strategyLabel, nil, w.strategy),
-		w.stopOnExit,
-	)
-	center := container.NewVBox(
-		layout.NewSpacer(),
-		container.NewCenter(w.button),
-		w.status,
-		layout.NewSpacer(),
-	)
-	top := container.NewVBox(subtitle)
+	// Шапка: иконка и название, справа кнопки-иконки.
+	appIcon := canvas.NewImageFromResource(assets.Icon)
+	appIcon.FillMode = canvas.ImageFillContain
+	appIcon.SetMinSize(fyne.NewSquareSize(18))
+	themeBtn := newIconButton(func() string {
+		if isDark() {
+			return "sun"
+		}
+		return "moon"
+	}, w.toggleTheme)
+	w.fullBtn = newIconButton(func() string {
+		if w.win.FullScreen() {
+			return "minimize"
+		}
+		return "maximize"
+	}, w.toggleFullScreen)
+	header := bar(46, 14, 9, colChrome,
+		row(10, appIcon, newText("Zapret Toggle", theme.ColorNameForeground, 13.5, true)),
+		row(2, w.fullBtn, themeBtn))
 
-	w.win.SetContent(container.NewPadded(container.NewBorder(top, bottom, nil, nil, center)))
-	w.win.Resize(fyne.NewSize(320, 420))
-	w.win.SetFixedSize(true)
+	// Карточка: заголовок 30 px, рамка, радиус 10.
+	paneHeader := bar(30, 12, 12, "", row(8,
+		newIcon("shield", colDim, 14),
+		newText("YouTube · Discord", theme.ColorNameForeground, 12.5, true),
+		newText("zapret1 · Flowseal", colMuted, 12.5, false),
+	), nil)
+	power := inset(insetLayout{left: 16, top: 20, right: 16, bottom: 20},
+		container.New(powerLayout{}, w.button, w.status, w.hint))
+	strategyRow := container.NewBorder(nil, nil,
+		row(8, newIcon("layers", colDim, 15), newText("Стратегия", colMuted, 13, false)), nil, w.strategy)
+	footer := container.New(maxWidthLayout{max: 440},
+		inset(insetLayout{left: 14, top: 12, right: 14, bottom: 8}, column(4, -1, strategyRow, w.stopOnExit)))
+	w.pane = newBox(colPane, colBorder, 10)
+	pane := container.NewStack(w.pane, column(0, 2, paneHeader, hline(), power, hline(), footer))
+
+	// Нижняя строка состояния.
+	w.dot = newBox(colDim, "", 3)
+	w.dot.min = fyne.NewSquareSize(6)
+	w.stateText = newText("", colMuted, 11.8, false)
+	w.unitText = newText("", colMuted, 11.8, false)
+	statusBar := bar(28, 14, 14, colChrome,
+		row(16, row(6, w.dot, w.stateText), row(6, newIcon("server", colMuted, 13), w.unitText)),
+		newText("F11 — полный экран", colDim, 11.8, false))
+
+	w.win.SetContent(column(0, 2,
+		header, hline(),
+		inset(insetLayout{left: 8, top: 8, right: 8, bottom: 8}, pane),
+		hline(), statusBar,
+	))
+	w.win.Canvas().SetOnTypedKey(func(e *fyne.KeyEvent) {
+		switch {
+		case e.Name == fyne.KeyF11:
+			w.toggleFullScreen()
+		case e.Name == fyne.KeyEscape && w.win.FullScreen():
+			w.toggleFullScreen()
+		}
+	})
+	// Размер окна меняется свободно; меньше минимального содержимого Fyne сжать не даст.
+	w.win.Resize(fyne.NewSize(420, 620))
 	w.win.CenterOnScreen()
 
 	if w.installErr != nil {
 		w.button.Disable()
 		w.strategy.Disable()
+		w.paint(stateOff)
+		w.stateText.setText("Не установлено")
 		msg := "zapret-dy не установлен.\nЗапусти: sudo scripts/install.sh"
 		if !errors.Is(w.installErr, service.ErrNotInstalled) {
 			msg = "Установка zapret-dy повреждена:\n" + w.installErr.Error() + "\nПереустанови: sudo scripts/install.sh"
@@ -151,17 +206,79 @@ func (w *Window) build() {
 	w.render()
 }
 
+// bar — полоса фиксированной высоты с фоном fill ("" — прозрачная): слева left, справа right.
+func bar(height, padLeft, padRight float32, fill fyne.ThemeColorName, left, right fyne.CanvasObject) fyne.CanvasObject {
+	if right == nil {
+		right = row(0)
+	}
+	return container.NewStack(
+		newBox(fill, "", 0),
+		inset(insetLayout{left: padLeft, right: padRight, height: height}, container.New(barLayout{gap: 16}, left, right)),
+	)
+}
+
+// hline — разделитель в 1 px цвета рамки.
+func hline() fyne.CanvasObject {
+	b := newBox(colBorder, "", 0)
+	b.min = fyne.NewSize(0, 1)
+	return b
+}
+
+func (w *Window) toggleTheme() {
+	w.cfg.Theme = config.ThemeDark
+	if isDark() {
+		w.cfg.Theme = config.ThemeLight
+	}
+	w.saveConfig()
+	w.app.Settings().SetTheme(&appTheme{mode: w.cfg.Theme})
+}
+
+func (w *Window) toggleFullScreen() {
+	w.win.SetFullScreen(!w.win.FullScreen())
+	w.fullBtn.Refresh()
+}
+
+// paint красит всё, что зависит от состояния: кнопку, рамку карточки, нижнюю строку.
+func (w *Window) paint(st powerState) {
+	w.button.SetState(st)
+	switch st {
+	case stateOn:
+		w.pane.setColors(colPane, colOn)
+		w.dot.setColors(colOn, "")
+		w.stateText.setText("Работает")
+		w.hint.setText("Нажми, чтобы выключить")
+	case stateBusy:
+		w.pane.setColors(colPane, colBusy)
+		w.dot.setColors(colBusy, "")
+		w.stateText.setText("Подожди…")
+		w.hint.setText("")
+	default:
+		w.pane.setColors(colPane, colBorder)
+		w.dot.setColors(colDim, "")
+		w.stateText.setText("Остановлено")
+		w.hint.setText("Нажми, чтобы включить")
+		if w.installErr != nil {
+			w.hint.setText("")
+		}
+	}
+	slug := w.running
+	if slug == "" {
+		slug = w.slugOf(w.strategy.Selected)
+	}
+	w.unitText.setText("zapret-dy@" + slug)
+}
+
 // render приводит кнопку и статус в соответствие с running/busy.
 func (w *Window) render() {
 	switch {
 	case w.running != "":
-		w.button.SetColor(colorOn, false)
+		w.paint(stateOn)
 		w.setStatus("Включено: YouTube и Discord", widget.SuccessImportance)
 	case w.lastErr != "":
-		w.button.SetColor(colorOff, false)
+		w.paint(stateOff)
 		w.setStatus(w.lastErr, widget.DangerImportance)
 	default:
-		w.button.SetColor(colorOff, false)
+		w.paint(stateOff)
 		w.setStatus("Выключено", widget.MediumImportance)
 	}
 	if w.busy || w.closing {
@@ -198,12 +315,16 @@ func (w *Window) strategyChanged(name string) {
 	if w.syncing {
 		return
 	}
+	w.win.Canvas().Unfocus() // иначе список забирает F11
 	slug := w.slugOf(name)
 	if slug == "" {
 		return
 	}
 	w.cfg.Strategy = slug
 	w.saveConfig()
+	if w.running == "" && !w.busy {
+		w.unitText.setText("zapret-dy@" + slug)
+	}
 	// Включено на другой стратегии — перезапуск на выбранную (Start сам остановит старую).
 	if w.running != "" && w.running != slug && !w.busy {
 		w.runOp("Переключение…", func(ctx context.Context) error { return service.Start(ctx, slug) })
@@ -215,7 +336,7 @@ func (w *Window) runOp(text string, op func(ctx context.Context) error) {
 	w.lastErr = ""
 	w.busy = true
 	w.seq++
-	w.button.SetColor(colorBusy, true)
+	w.paint(stateBusy)
 	w.button.Disable()
 	w.strategy.Disable()
 	w.setStatus(text, widget.WarningImportance)
@@ -301,7 +422,7 @@ func (w *Window) requestClose() {
 		return
 	}
 	w.closing = true
-	w.button.SetColor(colorBusy, true)
+	w.paint(stateBusy)
 	w.button.Disable()
 	w.strategy.Disable()
 	w.stopOnExit.Disable()

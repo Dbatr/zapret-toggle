@@ -10,47 +10,48 @@ import (
 	"fyne.io/fyne/v2/widget"
 )
 
-var (
-	colorOff  = color.NRGBA{R: 0x8a, G: 0x8f, B: 0x98, A: 0xff}
-	colorOn   = color.NRGBA{R: 0x22, G: 0xc5, B: 0x5e, A: 0xff}
-	colorBusy = color.NRGBA{R: 0xea, G: 0xb3, B: 0x08, A: 0xff}
-	colorIcon = color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0xff}
+// powerState — что показывает кнопка.
+type powerState int
+
+const (
+	stateOff powerState = iota
+	stateOn
+	stateBusy
 )
 
-const buttonSize = 176
-
 // PowerButton — большая круглая кнопка в стиле VPN-клиентов: круг с символом питания и «ореолом».
+// Цвета берутся из темы при каждой перерисовке, поэтому кнопка сама следует за светлой/тёмной темой.
 type PowerButton struct {
 	widget.DisableableWidget
 
 	OnTapped func()
 
-	color   color.NRGBA
+	state   powerState
 	hovered bool
 	pulse   *fyne.Animation
 	halo    *canvas.Circle
 }
 
 func NewPowerButton(tapped func()) *PowerButton {
-	b := &PowerButton{OnTapped: tapped, color: colorOff}
+	b := &PowerButton{OnTapped: tapped}
 	b.ExtendBaseWidget(b)
 	return b
 }
 
-// SetColor меняет цвет кнопки. pulse включает пульсацию ореола (идёт запуск/остановка).
-func (b *PowerButton) SetColor(c color.NRGBA, pulse bool) {
-	b.color = c
-	if pulse && b.pulse == nil {
+// SetState меняет вид кнопки. Во время запуска/остановки ореол пульсирует.
+func (b *PowerButton) SetState(s powerState) {
+	b.state = s
+	if s == stateBusy && b.pulse == nil {
 		b.pulse = fyne.NewAnimation(900*time.Millisecond, func(f float32) {
 			if b.halo != nil {
-				b.halo.FillColor = withAlpha(b.color, uint8(0x18+f*0x50))
+				b.halo.FillColor = withAlpha(nrgba(themeColor(colBusy)), uint8(0x18+f*0x50))
 				b.halo.Refresh()
 			}
 		})
 		b.pulse.AutoReverse = true
 		b.pulse.RepeatCount = fyne.AnimationRepeatForever
 		b.pulse.Start()
-	} else if !pulse && b.pulse != nil {
+	} else if s != stateBusy && b.pulse != nil {
 		b.pulse.Stop()
 		b.pulse = nil
 	}
@@ -83,7 +84,7 @@ func (b *PowerButton) MouseMoved(*desktop.MouseEvent) {}
 func (b *PowerButton) MouseOut()                      { b.hovered = false; b.Refresh() }
 
 func (b *PowerButton) MinSize() fyne.Size {
-	return fyne.NewSquareSize(buttonSize)
+	return fyne.NewSquareSize(powerMin)
 }
 
 func (b *PowerButton) CreateRenderer() fyne.WidgetRenderer {
@@ -91,8 +92,8 @@ func (b *PowerButton) CreateRenderer() fyne.WidgetRenderer {
 		b:    b,
 		halo: canvas.NewCircle(color.Transparent),
 		disc: canvas.NewCircle(color.Transparent),
-		ring: canvas.NewArc(40, 320, 0.74, colorIcon),
-		bar:  canvas.NewRectangle(colorIcon),
+		ring: canvas.NewArc(40, 320, 0.76, color.Transparent),
+		bar:  canvas.NewRectangle(color.Transparent),
 	}
 	b.halo = r.halo
 	r.Refresh()
@@ -114,9 +115,9 @@ func (r *powerRenderer) Layout(size fyne.Size) {
 		o.Move(center.SubtractXY(diameter/2, diameter/2))
 	}
 	place(r.halo, d)
-	place(r.disc, d*0.82)
+	place(r.disc, d*0.8)
 
-	ringD := d * 0.38
+	ringD := d * 0.34
 	stroke := ringD * (1 - r.ring.CutoutRatio) / 2
 	place(r.ring, ringD)
 	r.ring.CornerRadius = stroke / 2
@@ -130,17 +131,40 @@ func (r *powerRenderer) Layout(size fyne.Size) {
 func (r *powerRenderer) MinSize() fyne.Size { return r.b.MinSize() }
 
 func (r *powerRenderer) Refresh() {
-	c := r.b.color
-	if r.b.hovered && !r.b.Disabled() {
-		c = lighten(c, 0.12)
+	var disc, icon color.NRGBA
+	switch r.b.state {
+	case stateOn:
+		disc, icon = nrgba(themeColor(colOn)), nrgba(themeColor(colOnIcon))
+	case stateBusy:
+		disc, icon = nrgba(themeColor(colBusy)), nrgba(themeColor(colOnIcon))
+	default:
+		// Выключено — спокойный «приподнятый» круг с рамкой.
+		disc, icon = nrgba(themeColor(colRaised)), nrgba(themeColor(colMuted))
 	}
-	r.disc.FillColor = c
+	active := !r.b.Disabled() || r.b.pulse != nil
+	if r.b.hovered && active {
+		if r.b.state == stateOff {
+			icon = nrgba(themeColor(colOn))
+		} else {
+			disc = lighten(disc, 0.1)
+		}
+	}
+	if !active {
+		icon = withAlpha(icon, icon.A/2)
+	}
+
+	r.disc.FillColor = disc
+	r.disc.StrokeWidth = 0
+	if r.b.state == stateOff {
+		r.disc.StrokeColor = themeColor(colBorder)
+		r.disc.StrokeWidth = 1
+	}
 	if r.b.pulse == nil {
-		r.halo.FillColor = withAlpha(r.b.color, 0x30)
-	}
-	icon := colorIcon
-	if r.b.Disabled() && r.b.pulse == nil {
-		icon = withAlpha(colorIcon, 0x80)
+		if r.b.state == stateOff {
+			r.halo.FillColor = withAlpha(nrgba(themeColor(colRaised)), 0x60)
+		} else {
+			r.halo.FillColor = withAlpha(disc, 0x30)
+		}
 	}
 	r.ring.FillColor = icon
 	r.bar.FillColor = icon
@@ -156,6 +180,10 @@ func (r *powerRenderer) Destroy() {
 	if r.b.pulse != nil {
 		r.b.pulse.Stop()
 	}
+}
+
+func nrgba(c color.Color) color.NRGBA {
+	return color.NRGBAModel.Convert(c).(color.NRGBA)
 }
 
 func withAlpha(c color.NRGBA, a uint8) color.NRGBA {

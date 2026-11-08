@@ -18,7 +18,7 @@ func TestLoadMissingGivesDefault(t *testing.T) {
 
 func TestSaveLoad(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "zapret-toggle", "config.json")
-	want := Config{Strategy: "alt2", StopOnClose: false}
+	want := Config{Strategy: "alt2", StopOnClose: false, Theme: ThemeLight}
 	if err := Save(path, want); err != nil {
 		t.Fatal(err)
 	}

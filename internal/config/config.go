@@ -14,7 +14,14 @@ type Config struct {
 	Strategy string `json:"strategy"`
 	// StopOnClose — выключать zapret при закрытии окна (как закрытие батника на Windows).
 	StopOnClose bool `json:"stop_on_close"`
+	// Theme — тема окна: ThemeDark, ThemeLight или "" (как в системе).
+	Theme string `json:"theme,omitempty"`
 }
+
+const (
+	ThemeDark  = "dark"
+	ThemeLight = "light"
+)
 
 func Default() Config {
 	return Config{StopOnClose: true}
