@@ -10,6 +10,8 @@
 - `internal/service` — `systemctl` через exec, без root (polkit). `Start` сначала останавливает
   другие `zapret-dy@*` (общие таблица nft и очередь 200), после `start` ~1.5 с следит, что юнит
   не ушёл в failed/auto-restart (Type=simple отвечает «ок» до разбора аргументов nfqws).
+  `Watch` (`watch.go`) — сигналы systemd по системной шине D-Bus (godbus, Subscribe + PropertiesChanged
+  по точным путям юнитов из index.txt); тест — на пользовательском systemd через `systemd-run --user`.
 - `internal/strategies` — `/opt/zapret-dy/strategies/index.txt` (`<slug>\t<имя .bat>`).
 - `internal/config` — `~/.config/zapret-toggle/config.json`: `strategy`, `stop_on_close` (по умолчанию true),
   `theme` (`dark`/`light`, пусто — как в системе).
@@ -20,8 +22,9 @@
   stroke — Fyne перекрашивает только fill, так что цвет подставляет `iconRes`. `layouts.go` —
   раскладки без отступов Fyne (полосы 46/30/28 px). `PowerButton` (canvas.Circle/Arc
   + Tappable) растёт с окном от 136 до 260 px. Состояние окна
-  трогается только в UI-потоке; systemctl — в горутинах, обратно через `fyne.Do`. `seq` отбрасывает
-  результаты опроса (каждые 2 с), начатого до операции.
+  трогается только в UI-потоке; systemctl — в горутинах, обратно через `fyne.Do`. Статус перечитывается
+  по сигналам D-Bus (плюс страховочный опрос раз в 30 с), без D-Bus — опрос каждые 2 с. `seq` отбрасывает
+  результаты опроса, начатого до операции. `setStatus`/`SetState` без изменений не перерисовывают.
 - `system/` — то, что ставится от root в `/opt/zapret-dy` и `/etc`: `firewall.sh` (nft, таблица
   `inet zapretdy`, один `nft -f`), `run.sh` (exec nfqws), `zapret-dy@.service`, `50-zapret-dy.rules.in`,
   `convert.py` (готов и проверен — не переписывать без необходимости).

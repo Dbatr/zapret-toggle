@@ -31,11 +31,15 @@ import (
 )
 
 const (
-	pollInterval = 2 * time.Second
-	opTimeout    = 45 * time.Second
-	stopTimeout  = 20 * time.Second
-	// Чтение статуса после операции — со своим таймаутом.
+	// Без D-Bus статус опрашивается так часто; с ним — по сигналам systemd, а опрос раз
+	// в watchPollInterval лишь страхует (юнит не из списка, пропущенный сигнал).
+	pollInterval      = 2 * time.Second
+	watchPollInterval = 30 * time.Second
+	// Сигналы одной операции приходят пачкой — ждём, пока она закончится.
+	watchDebounce = 150 * time.Millisecond
 	statusTimeout = 10 * time.Second
+	opTimeout     = 45 * time.Second
+	stopTimeout   = 20 * time.Second
 )
 
 type Window struct {
@@ -99,7 +103,7 @@ func (w *Window) Run() {
 	w.app.Lifecycle().SetOnStarted(func() {
 		go w.handleSignals()
 		if w.installErr == nil {
-			go w.pollLoop()
+			go w.statusLoop()
 		}
 	})
 	w.win.ShowAndRun()
@@ -301,6 +305,11 @@ func (w *Window) render() {
 }
 
 func (w *Window) setStatus(text string, imp widget.Importance) {
+	// Label.SetText всегда заново раскладывает текст и перерисовывает окно, а статус
+	// обновляется после каждого опроса — без изменений не трогаем.
+	if w.status.Text == text && w.status.Importance == imp {
+		return
+	}
 	w.status.Importance = imp
 	w.status.SetText(text)
 }
@@ -377,28 +386,65 @@ func (w *Window) runOp(text string, op func(ctx context.Context) error) {
 	}()
 }
 
-// pollLoop раз в pollInterval читает список активных юнитов (zapret могли включить/выключить
-// извне или он упал). Результат отбрасывается, если за время запроса началась операция.
-func (w *Window) pollLoop() {
-	t := time.NewTicker(pollInterval)
-	defer t.Stop()
-	for ; ; <-t.C {
-		var skip bool
-		var seq uint64
-		fyne.DoAndWait(func() { skip, seq = w.busy || w.closing, w.seq })
-		if skip {
-			continue
-		}
-		ctx, cancel := context.WithTimeout(context.Background(), pollInterval*2)
-		active, err := service.Active(ctx)
-		cancel()
-		fyne.Do(func() {
-			if w.busy || w.closing || w.seq != seq {
-				return
-			}
-			w.applyActive(active, err)
-		})
+// statusLoop следит за состоянием юнитов (zapret могли включить/выключить извне или он упал):
+// по сигналам systemd через D-Bus, а если подписаться не вышло — опросом раз в pollInterval.
+// Результат отбрасывается, если за время запроса началась операция.
+func (w *Window) statusLoop() {
+	slugs := make([]string, len(w.list)) // w.list после New не меняется
+	for i, s := range w.list {
+		slugs[i] = s.Slug
 	}
+	interval := pollInterval
+	changes, err := service.Watch(context.Background(), slugs)
+	if err != nil {
+		log.Printf("D-Bus недоступен, статус опрашивается каждые %v: %v", pollInterval, err)
+	} else {
+		interval = watchPollInterval
+	}
+
+	t := time.NewTimer(0) // первый раз — сразу
+	defer t.Stop()
+	for {
+		select {
+		case <-t.C:
+		case _, ok := <-changes:
+			if !ok {
+				log.Printf("соединение с D-Bus потеряно, статус опрашивается каждые %v", pollInterval)
+				changes, interval = nil, pollInterval
+				break
+			}
+			time.Sleep(watchDebounce)
+			select { // то, что пришло за время ожидания, учтётся этим же запросом
+			case <-changes:
+			default:
+			}
+		}
+		next := interval
+		if !w.refreshStatus() {
+			next = pollInterval // шла операция — проверить вскоре ещё раз
+		}
+		t.Reset(next)
+	}
+}
+
+// refreshStatus перечитывает статус; false — пропущено, потому что идёт операция.
+func (w *Window) refreshStatus() bool {
+	var skip bool
+	var seq uint64
+	fyne.DoAndWait(func() { skip, seq = w.busy || w.closing, w.seq })
+	if skip {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), statusTimeout)
+	active, err := service.Active(ctx)
+	cancel()
+	fyne.Do(func() {
+		if w.busy || w.closing || w.seq != seq {
+			return
+		}
+		w.applyActive(active, err)
+	})
+	return true
 }
 
 func (w *Window) applyActive(active []string, err error) {

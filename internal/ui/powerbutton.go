@@ -40,6 +40,9 @@ func NewPowerButton(tapped func()) *PowerButton {
 
 // SetState меняет вид кнопки. Во время запуска/остановки ореол пульсирует.
 func (b *PowerButton) SetState(s powerState) {
+	if b.state == s {
+		return // состояние ставится после каждого опроса статуса — не перерисовываем зря
+	}
 	b.state = s
 	if s == stateBusy && b.pulse == nil {
 		b.pulse = fyne.NewAnimation(900*time.Millisecond, func(f float32) {
