@@ -50,6 +50,8 @@ done
 [[ -x $NFQWS ]] || die "нет $NFQWS"
 [[ -f $FLOWSEAL/COMMIT ]] || die "нет $FLOWSEAL (скачай: scripts/update-flowseal.sh)"
 compgen -G "$FLOWSEAL/fake/*.bin" >/dev/null || die "нет фейковых пакетов в $FLOWSEAL/fake"
+# Файлы Flowseal читает root и кладёт в /opt читаемыми всем: ссылка вытащила бы туда чужой файл.
+[[ -z $(find "$FLOWSEAL" -type l -print -quit) ]] || die "в $FLOWSEAL есть символические ссылки"
 
 as_user() { runuser -u "$user" -- "$@"; }
 

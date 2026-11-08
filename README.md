@@ -47,7 +47,8 @@ sudo scripts/install.sh      # или: make install
 
 Скрипт:
 - копирует nfqws, скрипты и фейковые пакеты в `/opt/zapret-dy`, конвертирует стратегии Flowseal
-  (`system/convert.py`) и проверяет каждую через `nfqws --dry-run` — не прошедшие не попадут в список;
+  (`system/convert.py`) и проверяет каждую: опции nfqws — по белому списку, файлы — только из
+  `/opt/zapret-dy/fake` и `lists`, затем `nfqws --dry-run` — не прошедшие не попадут в список;
 - ставит `/etc/systemd/system/zapret-dy@.service` и `/etc/polkit-1/rules.d/50-zapret-dy.rules`
   (только для твоего пользователя, только start/stop/restart юнитов `zapret-dy@*`, только в активной
   локальной сессии), делает `daemon-reload` и `restorecon` (SELinux);
@@ -148,6 +149,9 @@ sudo scripts/uninstall.sh --purge   # вместе с настройками п�
 - Никаких `NOPASSWD` в sudoers. polkit разрешает только `start`/`stop`/`restart` юнитов
   `zapret-dy@<[a-z0-9-]+>.service`, только установившему пользователю и только в активной локальной сессии.
 - Юнит без секции `[Install]`: `systemctl enable` на нём не сработает, автозапуска нет.
+- Аргументы nfqws из `.bat` Flowseal не доверенные: опции сверяются с белым списком (без `--pidfile`,
+  `--debug`, `--uid`/`--user`, `--hostlist-auto`, своих `--qnum` и `--dpi-desync-fwmark`), пути —
+  только внутри `/opt/zapret-dy/fake` и `lists`; символические ссылки в Flowseal отвергаются.
 - Сервис с умеренным hardening: `ProtectSystem=full`, `ProtectHome=yes`, `PrivateTmp=yes`,
   `CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW CAP_SETUID CAP_SETGID`. nfqws после старта
   сбрасывает root и оставляет себе только `CAP_NET_ADMIN` и `CAP_NET_RAW`.

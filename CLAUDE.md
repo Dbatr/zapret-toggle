@@ -26,7 +26,9 @@
   `inet zapretdy`, один `nft -f`), `run.sh` (exec nfqws), `zapret-dy@.service`, `50-zapret-dy.rules.in`,
   `convert.py` (готов и проверен — не переписывать без необходимости).
 - `scripts/` — `install.sh`, `uninstall.sh`, `update-flowseal.sh`, `check-strategies.sh`
-  (`nfqws --dry-run` по index.txt, не прошедшие выкидываются).
+  (белый список опций nfqws и путей только в `fake/`/`lists/`, затем `nfqws --dry-run`; не прошедшие
+  выкидываются). Белый список — граница доверия к Flowseal: nfqws стартует от root, а getopt_long
+  принимает сокращения, поэтому имена опций сверяются целиком.
 - `third_party/` — nfqws и Flowseal; руками не правим, Flowseal обновляет `update-flowseal.sh`.
 
 ## Инварианты

@@ -66,6 +66,12 @@ for f in list-general.txt list-google.txt list-exclude.txt ipset-exclude.txt; do
 done
 compgen -G "$src/general*.bat" >/dev/null || die "в репозитории нет general*.bat"
 compgen -G "$src/bin/*.bin" >/dev/null || die "в репозитории нет bin/*.bin"
+# Символическая ссылка из архива указывала бы на файл этой машины (например, ключ из ~/.ssh):
+# cp скопировал бы его содержимое в third_party, а install.sh — в /opt, читаемым всем.
+for f in "$src/lists" "$src/bin" "$src"/general*.bat "$src"/lists/*.txt "$src"/bin/*.bin; do
+	[[ ! -L $f ]] || die "в репозитории символическая ссылка: ${f#"$src"/}"
+	[[ -f $f || -d $f ]] || die "в репозитории не обычный файл: ${f#"$src"/}"
+done
 
 # Только нужное: стратегии, списки и фейковые пакеты (winws.exe и прочее для Windows не берём).
 rm -rf "$staged"

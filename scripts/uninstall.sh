@@ -49,16 +49,18 @@ user=${SUDO_USER-}
 if [[ -n $user && $user != root ]]; then
 	home=$(getent passwd "$user" | cut -d: -f6)
 	if [[ -n $home && -d $home ]]; then
+		# Внутри домашнего каталога — от имени пользователя, а не root: пути в нём контролирует он.
+		as_user() { runuser -u "$user" -- "$@"; }
 		step "Удаление приложения пользователя $user"
-		rm -f "$home/.local/bin/zapret-toggle" \
+		as_user rm -f "$home/.local/bin/zapret-toggle" \
 			"$home/.local/share/applications/zapret-toggle.desktop" \
 			"$home/.local/share/icons/hicolor/256x256/apps/zapret-toggle.png"
 		if command -v update-desktop-database >/dev/null; then
-			runuser -u "$user" -- update-desktop-database "$home/.local/share/applications" || true
+			as_user update-desktop-database "$home/.local/share/applications" || true
 		fi
 		if ((purge)); then
 			step "Удаление настроек"
-			rm -rf "$home/.config/zapret-toggle" "$home/.config/fyne/zapret-toggle"
+			as_user rm -rf "$home/.config/zapret-toggle" "$home/.config/fyne/zapret-toggle"
 		fi
 	fi
 else
