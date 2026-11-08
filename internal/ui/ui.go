@@ -34,6 +34,8 @@ const (
 	pollInterval = 2 * time.Second
 	opTimeout    = 45 * time.Second
 	stopTimeout  = 20 * time.Second
+	// Чтение статуса после операции — со своим таймаутом.
+	statusTimeout = 10 * time.Second
 )
 
 type Window struct {
@@ -61,6 +63,7 @@ type Window struct {
 	// Только для UI-потока.
 	running        string // slug активной стратегии, "" — выключено
 	lastErr        string // текст последней ошибки; висит в статусе до следующего действия
+	statusErr      string // не удалось получить статус; перекрывает остальные сообщения
 	busy           bool   // идёт start/stop
 	seq            uint64 // растёт при каждой операции; устаревшие результаты опроса отбрасываются
 	syncing        bool   // программная смена выбора стратегии, OnChanged игнорируется
@@ -271,6 +274,13 @@ func (w *Window) paint(st powerState) {
 // render приводит кнопку и статус в соответствие с running/busy.
 func (w *Window) render() {
 	switch {
+	case w.statusErr != "":
+		st := stateOff
+		if w.running != "" {
+			st = stateOn
+		}
+		w.paint(st)
+		w.setStatus("Не удалось получить статус:\n"+w.statusErr, widget.DangerImportance)
 	case w.running != "":
 		w.paint(stateOn)
 		w.setStatus("Включено: YouTube и Discord", widget.SuccessImportance)
@@ -345,7 +355,10 @@ func (w *Window) runOp(text string, op func(ctx context.Context) error) {
 		ctx, cancel := context.WithTimeout(context.Background(), opTimeout)
 		defer cancel()
 		err := op(ctx)
-		active, aerr := service.Active(ctx)
+		// Свой таймаут: контекст операции мог уже истечь, а статус узнать всё равно нужно.
+		actx, acancel := context.WithTimeout(context.Background(), statusTimeout)
+		active, aerr := service.Active(actx)
+		acancel()
 		fyne.Do(func() {
 			w.busy = false
 			w.seq++
@@ -391,9 +404,12 @@ func (w *Window) pollLoop() {
 func (w *Window) applyActive(active []string, err error) {
 	if err != nil {
 		log.Printf("статус: %v", err)
-		w.setStatus("Не удалось получить статус:\n"+err.Error(), widget.DangerImportance)
+		// Не просто текст: после операции кнопка и список должны выйти из «Подожди…».
+		w.statusErr = err.Error()
+		w.render()
 		return
 	}
+	w.statusErr = ""
 	w.running = ""
 	if len(active) > 0 {
 		w.running = active[0]

@@ -71,6 +71,11 @@ func Save(path string, cfg Config) error {
 		tmp.Close()
 		return err
 	}
+	// Без Sync после сбоя питания rename может оказаться на диске раньше данных — пустой конфиг.
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		return err
+	}
 	if err := tmp.Close(); err != nil {
 		return err
 	}

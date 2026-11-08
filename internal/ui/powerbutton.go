@@ -179,7 +179,9 @@ func (r *powerRenderer) Objects() []fyne.CanvasObject {
 func (r *powerRenderer) Destroy() {
 	if r.b.pulse != nil {
 		r.b.pulse.Stop()
+		r.b.pulse = nil
 	}
+	r.b.halo = nil
 }
 
 func nrgba(c color.Color) color.NRGBA {
