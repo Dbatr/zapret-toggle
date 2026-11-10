@@ -20,7 +20,7 @@ RestartSec=2
 
 # Песочница: nfqws разбирает чужие пакеты из сети, поэтому ему оставлено только нужное —
 # netlink (nft, очередь), raw-сокеты и чтение /opt/zapret-dy. Писать на диск некуда (кроме
-# своего /tmp), новых привилегий, пространств имён и исполняемой памяти не получить.
+# своего /tmp), новых привилегий и пространств имён не получить.
 CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW CAP_SETUID CAP_SETGID
 NoNewPrivileges=yes
 UMask=0077
@@ -38,7 +38,8 @@ RestrictNamespaces=yes
 RestrictRealtime=yes
 RestrictSUIDSGID=yes
 LockPersonality=yes
-MemoryDenyWriteExecute=yes
+# MemoryDenyWriteExecute нельзя: бинарник nfqws упакован и при старте делает свою память
+# исполняемой (mprotect) — с этим запретом он падает с SIGSEGV.
 RestrictAddressFamilies=AF_UNIX AF_NETLINK AF_INET AF_INET6
 SystemCallArchitectures=native
 SystemCallFilter=@system-service

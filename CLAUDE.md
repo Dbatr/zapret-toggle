@@ -59,9 +59,10 @@
   --bounding-set`): nfqws сбрасывает uid, оставляет CAP_NET_ADMIN|CAP_NET_RAW, биндится к очереди 200.
   CAP_SETPCAP не нужен. Фильтры юнита подобраны по трассировке (ptrace) firewall.sh и nfqws под трафиком
   (STUN, TCP SYN, SIGHUP): все системные вызовы входят в `@system-service`, сокеты — AF_UNIX, AF_NETLINK,
-  AF_INET, AF_INET6, на запись ничего не открывается, W+X-памяти нет. SELinux: `init_t` →
-  `unconfined_service_t` с `nnp_transition` разрешён. Под настоящим systemd новый набор не запускался
-  (нет sudo) — после изменений юнита проверить включением кнопкой.
+  AF_INET, AF_INET6, на запись ничего не открывается. SELinux: `init_t` → `unconfined_service_t`
+  с `nnp_transition` разрешён. `MemoryDenyWriteExecute` включать нельзя: nfqws упакован и делает память
+  исполняемой через mprotect — падал с SIGSEGV сразу после старта. Настройки юнита можно прогнать без
+  root: `systemd-run --user --wait --pipe -p <настройка>… /opt/zapret-dy/nfqws --dry-run …`.
 - GLFW в Fyne 2.8 по умолчанию требует заголовки Wayland; без них Makefile собирает с `-tags x11`.
 
 ## Команды
