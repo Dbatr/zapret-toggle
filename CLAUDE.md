@@ -15,6 +15,9 @@
   не ушёл в failed/auto-restart (Type=simple отвечает «ок» до разбора аргументов nfqws).
   `Watch` (`watch.go`) — сигналы systemd по системной шине D-Bus (godbus, Subscribe + PropertiesChanged
   по точным путям юнитов из index.txt); тест — на пользовательском systemd через `systemd-run --user`.
+  `Active(ctx, slugs...)` спрашивает systemd по D-Bus: со slugs — `ListUnitsByNames` (~5 мс), без них —
+  `ListUnitsByPatterns` (~40 мс: PID 1 перебирает все юниты системы, как и `systemctl list-units`);
+  без шины — запасной путь через `systemctl`.
 - `internal/strategies` — `/opt/zapret-dy/strategies/index.txt` (`<slug>\t<имя .bat>`).
 - `internal/config` — `~/.config/zapret-toggle/config.json`: `strategy`, `stop_on_close` (по умолчанию true),
   `theme` (`dark`/`light`, пусто — как в системе).
@@ -26,7 +29,8 @@
   раскладки без отступов Fyne (полосы 46/30/28 px). `PowerButton` (canvas.Circle/Arc
   + Tappable) растёт с окном от 136 до 260 px. Состояние окна
   трогается только в UI-потоке; systemctl — в горутинах, обратно через `fyne.Do`. Статус перечитывается
-  по сигналам D-Bus (плюс страховочный опрос раз в 30 с), без D-Bus — опрос каждые 2 с. `seq` отбрасывает
+  по сигналам D-Bus (плюс страховочный опрос раз в 30 с), без D-Bus — опрос каждые 2 с. Обычный запрос
+  статуса — только по стратегиям из списка, страховочный — по всем `zapret-dy@*`. `seq` отбрасывает
   результаты опроса, начатого до операции. `setStatus`/`SetState` без изменений не перерисовывают.
 - `system/` — то, что ставится от root в `/opt/zapret-dy` и `/etc`: `firewall.sh` (nft, таблица
   `inet zapretdy`, один `nft -f`), `run.sh` (exec nfqws), `zapret-dy@.service`, `50-zapret-dy.rules.in`,
@@ -51,8 +55,13 @@
 
 - Все 22 стратегии проходят `nfqws --dry-run`. Под root dry-run тоже сбрасывает права (uid 0x7FFFFFFF),
   поэтому проверка в install.sh идёт после выставления прав.
-- Hardening юнита не ломает nft/nfqws (проверено в `unshare --user --net` + `setpriv --bounding-set`):
-  nfqws сбрасывает uid, оставляет CAP_NET_ADMIN|CAP_NET_RAW, биндится к очереди 200. CAP_SETPCAP не нужен.
+- Hardening юнита не ломает nft/nfqws (проверено в `unshare --user --net` + `setpriv --no-new-privs
+  --bounding-set`): nfqws сбрасывает uid, оставляет CAP_NET_ADMIN|CAP_NET_RAW, биндится к очереди 200.
+  CAP_SETPCAP не нужен. Фильтры юнита подобраны по трассировке (ptrace) firewall.sh и nfqws под трафиком
+  (STUN, TCP SYN, SIGHUP): все системные вызовы входят в `@system-service`, сокеты — AF_UNIX, AF_NETLINK,
+  AF_INET, AF_INET6, на запись ничего не открывается, W+X-памяти нет. SELinux: `init_t` →
+  `unconfined_service_t` с `nnp_transition` разрешён. Под настоящим systemd новый набор не запускался
+  (нет sudo) — после изменений юнита проверить включением кнопкой.
 - GLFW в Fyne 2.8 по умолчанию требует заголовки Wayland; без них Makefile собирает с `-tags x11`.
 
 ## Команды

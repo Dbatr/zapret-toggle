@@ -152,9 +152,12 @@ sudo scripts/uninstall.sh --purge   # вместе с настройками п�
 - Аргументы nfqws из `.bat` Flowseal не доверенные: опции сверяются с белым списком (без `--pidfile`,
   `--debug`, `--uid`/`--user`, `--hostlist-auto`, своих `--qnum` и `--dpi-desync-fwmark`), пути —
   только внутри `/opt/zapret-dy/fake` и `lists`; символические ссылки в Flowseal отвергаются.
-- Сервис с умеренным hardening: `ProtectSystem=full`, `ProtectHome=yes`, `PrivateTmp=yes`,
-  `CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW CAP_SETUID CAP_SETGID`. nfqws после старта
-  сбрасывает root и оставляет себе только `CAP_NET_ADMIN` и `CAP_NET_RAW`.
+- Сервис в песочнице systemd: `CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW CAP_SETUID CAP_SETGID`,
+  `NoNewPrivileges`, `ProtectSystem=strict`, `ProtectHome`, `PrivateTmp`, `PrivateDevices`, защита
+  ядра (`ProtectKernel*`, `ProtectControlGroups`, `ProtectClock`), фильтр системных вызовов
+  `@system-service`, сокеты только `AF_UNIX`/`AF_NETLINK`/`AF_INET`/`AF_INET6`
+  (`systemd-analyze security` — 2.6 вместо 7.0). nfqws после старта сбрасывает root и оставляет
+  себе только `CAP_NET_ADMIN` и `CAP_NET_RAW`.
 - Только zapret1 (`nfqws` v72.13) и стратегии Flowseal; только YouTube и Discord —
   профили Flowseal с `ipset-all` (Cloudflare и т.п.) и GameFilter выброшены конвертером.
 - Значка в трее нет (в GNOME трей без расширения не работает).
