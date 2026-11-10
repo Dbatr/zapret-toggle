@@ -1,6 +1,9 @@
 package service
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 func TestParseUnits(t *testing.T) {
 	out := "zapret-dy@general.service loaded active running zapret DPI bypass for YouTube and Discord (strategy general)\n" +
@@ -24,5 +27,15 @@ func TestErrorJournalCmd(t *testing.T) {
 	e := &Error{Slug: "alt2"}
 	if got := e.JournalCmd(); got != "journalctl -u zapret-dy@alt2.service -n 50" {
 		t.Fatal(got)
+	}
+}
+
+func TestFilterStates(t *testing.T) {
+	units := []unitState{{"general", "inactive"}, {"alt2", "active"}, {"alt", "failed"}}
+	if got := filterStates(slices.Clone(units), []string{"active"}); len(got) != 1 || got[0].slug != "alt2" {
+		t.Errorf("active: %v", got)
+	}
+	if got := filterStates(slices.Clone(units), nil); len(got) != 3 || got[0].slug != "alt" || got[2].slug != "general" {
+		t.Errorf("все: %v", got)
 	}
 }

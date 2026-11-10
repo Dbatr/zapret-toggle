@@ -68,3 +68,50 @@ func TestWatchUserManager(t *testing.T) {
 	for range ch { // канал должен закрыться после отмены
 	}
 }
+
+// listUnitsOn на пользовательском systemd: работающий юнит виден и при переборе всех юнитов,
+// и при запросе по имени, с фильтром active и без него; после остановки из активных пропадает.
+func TestListUnitsUserManager(t *testing.T) {
+	if _, err := exec.LookPath("systemd-run"); err != nil {
+		t.Skip("нет systemd-run")
+	}
+	conn, err := dbus.ConnectSessionBus()
+	if err != nil {
+		t.Skipf("нет сессионной шины: %v", err)
+	}
+	defer conn.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	if _, err := listUnitsOn(ctx, conn, nil, nil); err != nil {
+		t.Skipf("пользовательский systemd недоступен: %v", err)
+	}
+	slug := fmt.Sprintf("listtest-%d", os.Getpid())
+	if out, err := exec.Command("systemd-run", "--user", "--quiet", "--collect",
+		"--unit="+Unit(slug), "sleep", "30").CombinedOutput(); err != nil {
+		t.Skipf("systemd-run: %v: %s", err, out)
+	}
+	stop := func() { _ = exec.Command("systemctl", "--user", "stop", Unit(slug)).Run() }
+	defer stop()
+
+	has := func(slugs []string, states ...string) bool {
+		t.Helper()
+		units, err := listUnitsOn(ctx, conn, slugs, states)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, u := range units {
+			if u.slug == slug {
+				return u.active == "active"
+			}
+		}
+		return false
+	}
+	byName := []string{slug, slug + "-none"}
+	if !has(nil, "active") || !has(nil) || !has(byName, "active") || !has(byName) {
+		t.Fatal("работающий юнит не найден")
+	}
+	stop()
+	if has(nil, "active") || has(byName, "active") {
+		t.Fatal("остановленный юнит остался в активных")
+	}
+}

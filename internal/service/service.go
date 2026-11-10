@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
 	"time"
 
@@ -64,16 +65,46 @@ func Installed() error {
 }
 
 // Active возвращает slug'и активных (active) юнитов zapret-dy@*.
-func Active(ctx context.Context) ([]string, error) {
-	out, err := systemctl(ctx, "list-units", "zapret-dy@*", "--state=active", "--plain", "--no-legend")
+//
+// Если переданы slugs, systemd спрашивают только про эти стратегии — ответ за ~5 мс.
+// Без них он перебирает все юниты системы: ~40 мс, и всё это время PID 1 занят;
+// зато найдётся и юнит не из списка.
+func Active(ctx context.Context, slugs ...string) ([]string, error) {
+	units, err := listUnits(ctx, slugs, "active")
 	if err != nil {
 		return nil, err
 	}
-	var slugs []string
-	for _, u := range parseUnits(out) {
-		slugs = append(slugs, u.slug)
+	active := make([]string, len(units))
+	for i, u := range units {
+		active[i] = u.slug
 	}
-	return slugs, nil
+	return active, nil
+}
+
+// listUnits возвращает юниты zapret-dy@* по порядку имён: для перечисленных slugs либо,
+// если их нет, все загруженные; states — фильтр по столбцу ACTIVE (пусто — любое состояние).
+// Спрашивает systemd по D-Bus, а если шина недоступна — через systemctl.
+func listUnits(ctx context.Context, slugs []string, states ...string) ([]unitState, error) {
+	if units, err := listUnitsDBus(ctx, slugs, states); err == nil {
+		return units, nil
+	}
+	out, err := systemctl(ctx, "list-units", unitPrefix+"*", "--all", "--plain", "--no-legend")
+	if err != nil {
+		return nil, err
+	}
+	return filterStates(parseUnits(out), states), nil
+}
+
+// filterStates оставляет юниты, чьё состояние есть в states (пусто — все), и сортирует по slug.
+func filterStates(units []unitState, states []string) []unitState {
+	kept := units[:0]
+	for _, u := range units {
+		if len(states) == 0 || slices.Contains(states, u.active) {
+			kept = append(kept, u)
+		}
+	}
+	slices.SortFunc(kept, func(a, b unitState) int { return strings.Compare(a.slug, b.slug) })
+	return kept
 }
 
 // Start запускает стратегию slug, предварительно остановив все остальные zapret-dy@*
@@ -116,11 +147,11 @@ func StopAll(ctx context.Context) error {
 }
 
 func stopAll(ctx context.Context, except string) error {
-	out, err := systemctl(ctx, "list-units", "zapret-dy@*", "--all", "--plain", "--no-legend")
+	units, err := listUnits(ctx, nil)
 	if err != nil {
 		return err
 	}
-	for _, u := range parseUnits(out) {
+	for _, u := range units {
 		if u.slug == except || u.active == "inactive" || u.active == "failed" {
 			continue
 		}
@@ -198,17 +229,21 @@ func parseUnits(out string) []unitState {
 		if len(f) < 3 {
 			continue
 		}
-		slug, ok := strings.CutPrefix(f[0], unitPrefix)
-		if !ok {
-			continue
+		if slug, ok := unitSlug(f[0]); ok {
+			units = append(units, unitState{slug: slug, active: f[2]})
 		}
-		slug, ok = strings.CutSuffix(slug, unitSuffix)
-		if !ok || !strategies.ValidSlug(slug) {
-			continue
-		}
-		units = append(units, unitState{slug: slug, active: f[2]})
 	}
 	return units
+}
+
+// unitSlug достаёт slug из имени юнита zapret-dy@<slug>.service.
+func unitSlug(unit string) (string, bool) {
+	slug, ok := strings.CutPrefix(unit, unitPrefix)
+	if !ok {
+		return "", false
+	}
+	slug, ok = strings.CutSuffix(slug, unitSuffix)
+	return slug, ok && strategies.ValidSlug(slug)
 }
 
 func systemctl(ctx context.Context, args ...string) (string, error) {

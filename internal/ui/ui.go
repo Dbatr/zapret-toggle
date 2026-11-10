@@ -50,6 +50,7 @@ type Window struct {
 	cfg     config.Config
 	cfgPath string
 	list    []strategies.Strategy
+	slugs   []string // slug'и из list; после New не меняются
 	// installErr != nil — системная часть не установлена, управлять нечем.
 	installErr error
 
@@ -126,8 +127,10 @@ func (w *Window) build() {
 	w.hint.align = fyne.TextAlignCenter
 
 	names := make([]string, len(w.list))
+	w.slugs = make([]string, len(w.list))
 	for i, s := range w.list {
 		names[i] = s.Name
+		w.slugs[i] = s.Slug
 	}
 	// Не NewSelect: он запрашивает перевод плейсхолдера "(Select one)", которого нет для ru.
 	w.strategy = &widget.Select{Options: names, OnChanged: w.strategyChanged, PlaceHolder: "—"}
@@ -372,7 +375,7 @@ func (w *Window) runOp(text string, op func(ctx context.Context) error) {
 		err := op(ctx)
 		// Свой таймаут: контекст операции мог уже истечь, а статус узнать всё равно нужно.
 		actx, acancel := context.WithTimeout(context.Background(), statusTimeout)
-		active, aerr := service.Active(actx)
+		active, aerr := service.Active(actx, w.slugs...)
 		acancel()
 		fyne.Do(func() {
 			w.busy = false
@@ -396,12 +399,8 @@ func (w *Window) runOp(text string, op func(ctx context.Context) error) {
 // по сигналам systemd через D-Bus, а если подписаться не вышло — опросом раз в pollInterval.
 // Результат отбрасывается, если за время запроса началась операция.
 func (w *Window) statusLoop() {
-	slugs := make([]string, len(w.list)) // w.list после New не меняется
-	for i, s := range w.list {
-		slugs[i] = s.Slug
-	}
 	interval := pollInterval
-	changes, err := service.Watch(context.Background(), slugs)
+	changes, err := service.Watch(context.Background(), w.slugs)
 	if err != nil {
 		log.Printf("D-Bus недоступен, статус опрашивается каждые %v: %v", pollInterval, err)
 	} else {
@@ -410,9 +409,14 @@ func (w *Window) statusLoop() {
 
 	t := time.NewTimer(0) // первый раз — сразу
 	defer t.Stop()
+	// Обычно спрашиваем только про стратегии из списка — это быстро. Раз в watchPollInterval
+	// опрос по таймеру перебирает все zapret-dy@*: вдруг запущен юнит, которого в списке нет.
+	lastFull := time.Now()
 	for {
+		full := false
 		select {
 		case <-t.C:
+			full = time.Since(lastFull) >= watchPollInterval
 		case _, ok := <-changes:
 			if !ok {
 				log.Printf("соединение с D-Bus потеряно, статус опрашивается каждые %v", pollInterval)
@@ -426,23 +430,30 @@ func (w *Window) statusLoop() {
 			}
 		}
 		next := interval
-		if !w.refreshStatus() {
+		if !w.refreshStatus(full) {
 			next = pollInterval // шла операция — проверить вскоре ещё раз
+		} else if full {
+			lastFull = time.Now()
 		}
 		t.Reset(next)
 	}
 }
 
 // refreshStatus перечитывает статус; false — пропущено, потому что идёт операция.
-func (w *Window) refreshStatus() bool {
+// full — проверить все юниты zapret-dy@*, а не только стратегии из списка.
+func (w *Window) refreshStatus(full bool) bool {
 	var skip bool
 	var seq uint64
 	fyne.DoAndWait(func() { skip, seq = w.busy || w.closing, w.seq })
 	if skip {
 		return false
 	}
+	slugs := w.slugs
+	if full {
+		slugs = nil
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), statusTimeout)
-	active, err := service.Active(ctx)
+	active, err := service.Active(ctx, slugs...)
 	cancel()
 	fyne.Do(func() {
 		if w.busy || w.closing || w.seq != seq {

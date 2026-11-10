@@ -82,6 +82,47 @@ func watch(ctx context.Context, conn *dbus.Conn, slugs []string) (<-chan struct{
 	return out, nil
 }
 
+// listUnitsDBus — listUnits через общее соединение с системной шиной (godbus держит его
+// открытым и подключается заново, если оно оборвалось).
+func listUnitsDBus(ctx context.Context, slugs, states []string) ([]unitState, error) {
+	conn, err := dbus.SystemBus()
+	if err != nil {
+		return nil, err
+	}
+	return listUnitsOn(ctx, conn, slugs, states)
+}
+
+func listUnitsOn(ctx context.Context, conn *dbus.Conn, slugs, states []string) ([]unitState, error) {
+	// ListUnitsByNames отвечает только про названные юниты (незагруженный — inactive),
+	// ListUnitsByPatterns перебирает все юниты системы. Элемент ответа: (ssssssouso).
+	method, args := "ListUnitsByPatterns", []any{[]string{}, []string{unitPrefix + "*"}}
+	if len(slugs) > 0 {
+		names := make([]string, len(slugs))
+		for i, slug := range slugs {
+			names[i] = Unit(slug)
+		}
+		method, args = "ListUnitsByNames", []any{names}
+	}
+	var rows []struct {
+		Name, Description, Load, Active, Sub, Following string
+		Path                                            dbus.ObjectPath
+		JobID                                           uint32
+		JobType                                         string
+		JobPath                                         dbus.ObjectPath
+	}
+	if err := conn.Object(systemdDest, systemdPath).
+		CallWithContext(ctx, systemdDest+".Manager."+method, 0, args...).Store(&rows); err != nil {
+		return nil, fmt.Errorf("systemd %s: %w", method, err)
+	}
+	units := make([]unitState, 0, len(rows))
+	for _, r := range rows {
+		if slug, ok := unitSlug(r.Name); ok {
+			units = append(units, unitState{slug: slug, active: r.Active})
+		}
+	}
+	return filterStates(units, states), nil
+}
+
 // unitPath — объектный путь юнита в systemd (как bus_label_escape: всё, кроме букв
 // и не первых цифр, заменяется на _XX).
 func unitPath(unit string) dbus.ObjectPath {
