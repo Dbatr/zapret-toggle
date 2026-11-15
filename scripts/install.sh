@@ -58,18 +58,19 @@ else
 fi
 # Имя попадает в polkit-правило (JS-строка) — пускаем только обычные имена.
 [[ $user =~ ^[a-z_][a-z0-9_.-]*$ ]] || die "неподдерживаемое имя пользователя: '$user'"
-home=$(getent passwd "$user" | cut -d: -f6)
-[[ -n $home && -d $home ]] || die "не найден домашний каталог пользователя $user"
+home='' # домашний каталог пользователя — его находит check_system
 
 as_user() { runuser -u "$user" -- "$@"; }
 
 # Команда оболочки от имени пользователя в его окружении входа (там PATH с его Go).
-# Без root (--check) пользователь и так он сам.
+# Без root (--check) пользователь и так он сам, но оболочка тоже «входная» (читает ~/.profile
+# или ~/.bash_profile), как runuser -l при установке, — иначе проверка и установка могли бы
+# увидеть разный PATH.
 user_sh() {
 	if [[ $EUID -eq 0 ]]; then
 		runuser -l "$user" -c "$1"
 	else
-		bash -c "$1"
+		bash -lc "$1"
 	fi
 }
 
@@ -112,6 +113,14 @@ kmod_missing() {
 # Система: то, без чего не заработает /opt/zapret-dy и юнит.
 check_system() {
 	local arch mod
+
+	# getent — часть glibc и есть везде, но без него не узнать ни домашний каталог, ни группу polkitd.
+	need_cmd getent getent
+	if have getent; then
+		home=$(getent passwd "$user" | cut -d: -f6) || home=''
+		[[ -n $home && -d $home ]] || problem "не найден домашний каталог пользователя $user"
+	fi
+
 	arch=$(uname -m)
 	# third_party/zapret/nfqws — статический бинарник под x86_64; на ARM нужен другой бинарник zapret.
 	[[ $arch == x86_64 ]] || problem "архитектура $arch не поддерживается: nfqws в third_party собран только для x86_64"
@@ -150,15 +159,31 @@ check_system() {
 }
 
 # polkit: правило кладётся в /etc/polkit-1/rules.d, а такие правила (на JavaScript) понимает
-# polkit 0.106 и новее — у него есть хотя бы /usr/share/polkit-1/rules.d.
+# polkit 0.106 и новее. Версию говорит pkaction; если её не узнать (pkaction нет или ответ
+# непонятен) — судим по каталогам правил: у нового polkit есть хотя бы /usr/share/polkit-1/rules.d.
 check_polkit() {
+	local out='' ver='' rc=2
+	if have pkaction; then
+		out=$(pkaction --version 2>/dev/null) || out=''
+		ver=${out##* } # «pkaction version 127» → 127
+		rc=0
+		polkit_supports_js_rules "$ver" || rc=$?
+	fi
+	case $rc in
+	0) return 0 ;;
+	1)
+		# Пакет тут не поможет: в этом выпуске дистрибутива polkit такой.
+		problem "polkit $ver слишком старый: правила из rules.d (на JavaScript) понимает polkit 0.106 и новее (в Ubuntu 22.04 и Debian 11 — 0.105)"
+		return 0
+		;;
+	esac
 	if [[ -d ${RULE%/*} || -d /usr/share/polkit-1/rules.d ]]; then
 		return 0
 	fi
-	if have pkaction || [[ -d /etc/polkit-1 ]]; then
-		problem "polkit слишком старый: нет каталога rules.d (нужен polkit 0.106+ с правилами на JavaScript; в Ubuntu 22.04 и Debian 11 его нет)"
+	if have pkaction; then
+		problem "не удалось узнать версию polkit («pkaction --version»), а каталога ${RULE%/*} нет — нужен polkit 0.106 или новее"
 	else
-		problem "не найден polkit (нет ${RULE%/*})"
+		problem "не найден polkit (нет ни pkaction, ни ${RULE%/*})"
 		missing+=(polkit)
 	fi
 }
@@ -222,7 +247,12 @@ if ((${#notes[@]})); then
 	printf '    %s\n' "${notes[@]}"
 fi
 if ((check_only)); then
-	echo "Проверка пройдена, можно ставить: sudo $0"
+	# Замечания с «ВНИМАНИЕ» установке не мешают, но молча их проходить нельзя.
+	if [[ " ${notes[*]}" == *ВНИМАНИЕ* ]]; then
+		echo "Проверка пройдена с замечаниями (см. выше). Если они не мешают — ставь: sudo $0"
+	else
+		echo "Проверка пройдена, можно ставить: sudo $0"
+	fi
 	exit 0
 fi
 

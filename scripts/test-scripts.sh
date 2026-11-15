@@ -84,6 +84,28 @@ for want in "sudo dnf install golang" "sudo apt install golang-go" "sudo pacman 
 	contains "install_hint без менеджера" "$hint" "$want"
 done
 
+equal "pkg_names getent" \
+	"$(pkg_names apt getent) $(pkg_names dnf getent) $(pkg_names pacman getent) $(pkg_names zypper getent)" \
+	"libc-bin glibc-common glibc glibc"
+
+# --- platform.sh: версия polkit --------------------------------------------------------
+
+# polkit_code <версия> — код polkit_supports_js_rules: 0 — правила rules.d есть, 1 — нет, 2 — не версия.
+polkit_code() {
+	local code=0
+	polkit_supports_js_rules "$1" || code=$?
+	echo "$code"
+}
+
+equal "polkit 0.105" "$(polkit_code 0.105)" 1
+equal "polkit 0.9" "$(polkit_code 0.9)" 1
+for ver in 0.106 0.122 127 1.0 0.120.1 126-1; do
+	equal "polkit $ver" "$(polkit_code "$ver")" 0
+done
+for ver in "" мусор version v127 .105; do
+	equal "polkit '$ver' — не версия" "$(polkit_code "$ver")" 2
+done
+
 # --- build-deps.sh: заглушки go, gcc и pkg-config -------------------------------------
 
 mkdir "$tmp/bin"

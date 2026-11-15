@@ -44,7 +44,7 @@ pkg_manager() {
 }
 
 # pkg_names <менеджер> <зависимость>… — имена пакетов через пробел. Зависимости: go, gcc, make,
-# pkg-config, python3, nft, polkit, systemd, util-linux, coreutils, gl, x11, wayland.
+# pkg-config, python3, nft, polkit, systemd, util-linux, coreutils, getent, gl, x11, wayland.
 # Незнакомые зависимости пропускаются.
 pkg_names() {
 	local pm=$1 dep pkg
@@ -70,6 +70,9 @@ pkg_names() {
 		*:systemd) names+=(systemd) ;;
 		*:util-linux) names+=(util-linux) ;;
 		*:coreutils) names+=(coreutils) ;;
+		apt:getent) names+=(libc-bin) ;;
+		dnf:getent) names+=(glibc-common) ;;
+		*:getent) names+=(glibc) ;;
 		dnf:gl) names+=(mesa-libGL-devel) ;;
 		apt:gl) names+=(libgl1-mesa-dev) ;;
 		pacman:gl) names+=(libglvnd) ;;
@@ -89,6 +92,17 @@ pkg_names() {
 		uniq+=("$pkg")
 	done
 	echo "${uniq[*]}"
+}
+
+# polkit_supports_js_rules <версия> — понимает ли polkit этой версии правила из rules.d
+# (на JavaScript): они появились в 0.106, а с 121 номер версии пишется без «0.».
+# Код 0 — да, 1 — нет, 2 — версию разобрать не удалось.
+polkit_supports_js_rules() {
+	local major minor
+	[[ ${1-} =~ ^([0-9]+)(\.([0-9]+))?([^0-9]|$) ]] || return 2
+	major=$((10#${BASH_REMATCH[1]}))
+	minor=$((10#${BASH_REMATCH[3]:-0}))
+	((major > 0 || minor >= 106))
 }
 
 # install_cmd <менеджер> — начало команды установки пакетов.
