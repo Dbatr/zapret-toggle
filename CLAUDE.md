@@ -3,8 +3,9 @@
 Десктоп-приложение (Go + Fyne v2.8): одна кнопка включает/выключает zapret1 (nfqws v72.13)
 только для YouTube и Discord, со стратегиями Flowseal. Интерфейс, README и сообщения — на русском.
 
-Работает на systemd-дистрибутивах x86_64 (Fedora, Debian/Ubuntu, Arch и производные, openSUSE)
-в любой оболочке (GNOME, KDE Plasma, XFCE, Cinnamon, MATE, LXQt, Budgie, i3, sway; X11 и Wayland).
+Рассчитано на systemd-дистрибутивы x86_64 (Fedora, Debian/Ubuntu, Arch и производные, openSUSE)
+и оболочки GNOME, KDE Plasma, XFCE, Cinnamon, MATE, LXQt, Budgie, i3, sway (X11 и Wayland);
+GUI проверен только в GNOME, остальные оболочки требуют ручной проверки.
 Основная машина разработки — Fedora/GNOME: поведение и безопасность на ней менять нельзя.
 
 ## Архитектура
@@ -46,10 +47,12 @@
   выкидываются). Белый список — граница доверия к Flowseal: nfqws стартует от root, а getopt_long
   принимает сокращения, поэтому имена опций сверяются целиком.
   - `install.sh` название дистрибутива не проверяет — только возможности: x86_64, systemd
-    (`/run/systemd/system`), `nft` (под root — `nft list tables`), polkit с `rules.d` (0.106+),
-    python3, make, runuser и зависимости сборки. Все проблемы собираются в список и печатаются
+    (`/run/systemd/system`), `nft` (под root — `nft list tables`), polkit 0.106+ (версия —
+    по `pkaction --version` через `polkit_supports_js_rules` из `platform.sh`, без неё — по каталогам
+    `rules.d`), python3, make, runuser, getent и зависимости сборки. Все проблемы собираются в список и печатаются
     разом с одной командой установки пакетов; сам он пакеты не ставит. `--check` — только проверки,
-    можно без sudo. `restorecon` — только если SELinux включён (`selinuxenabled`/`getenforce`)
+    можно без sudo; замечания с «ВНИМАНИЕ» (например, нет модуля ядра) не ошибка, но итог тогда
+    «пройдена с замечаниями». `restorecon` — только если SELinux включён (`selinuxenabled`/`getenforce`)
     и команда есть. Каталог polkit-правил, если его нет: с группой `polkitd` — `root:polkitd 750`,
     без неё — `root:root 755`.
   - `platform.sh` (подключается через source) — пакетный менеджер по `ID`/`ID_LIKE` из os-release
