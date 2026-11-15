@@ -290,3 +290,9 @@ scripts/build-deps.sh check   # чего не хватает для сборки
 
 Структура и детали — в [CLAUDE.md](CLAUDE.md). Откуда взяты бинарники и стратегии —
 в [third_party/README.md](third_party/README.md).
+
+## Лицензия
+
+[MIT](LICENSE). Сторонние компоненты — под своими лицензиями: zapret и стратегии Flowseal — MIT
+(`third_party/zapret/LICENSE.txt`, `third_party/flowseal/LICENSE.txt`), шрифт Geist — SIL OFL 1.1,
+иконки Lucide — ISC.

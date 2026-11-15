@@ -66,19 +66,21 @@ for f in list-general.txt list-google.txt list-exclude.txt ipset-exclude.txt; do
 done
 compgen -G "$src/general*.bat" >/dev/null || die "в репозитории нет general*.bat"
 compgen -G "$src/bin/*.bin" >/dev/null || die "в репозитории нет bin/*.bin"
+[[ -f $src/LICENSE.txt ]] || die "в репозитории нет LICENSE.txt"
 # Символическая ссылка из архива указывала бы на файл этой машины (например, ключ из ~/.ssh):
 # cp скопировал бы его содержимое в third_party, а install.sh — в /opt, читаемым всем.
-for f in "$src/lists" "$src/bin" "$src"/general*.bat "$src"/lists/*.txt "$src"/bin/*.bin; do
+for f in "$src/LICENSE.txt" "$src/lists" "$src/bin" "$src"/general*.bat "$src"/lists/*.txt "$src"/bin/*.bin; do
 	[[ ! -L $f ]] || die "в репозитории символическая ссылка: ${f#"$src"/}"
 	[[ -f $f || -d $f ]] || die "в репозитории не обычный файл: ${f#"$src"/}"
 done
 
-# Только нужное: стратегии, списки и фейковые пакеты (winws.exe и прочее для Windows не берём).
+# Только нужное: стратегии, списки, фейковые пакеты и лицензия (winws.exe и прочее для Windows не берём).
 rm -rf "$staged"
 mkdir -p "$staged/lists" "$staged/fake"
 cp -- "$src"/general*.bat "$staged/"
 cp -- "$src"/lists/*.txt "$staged/lists/"
 cp -- "$src"/bin/*.bin "$staged/fake/"
+cp -- "$src/LICENSE.txt" "$staged/"
 echo "$sha" > "$staged/COMMIT"
 chmod -R u=rwX,go=rX "$staged"
 
