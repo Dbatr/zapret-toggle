@@ -4,6 +4,9 @@
 // StartupNotify=false в .desktop) и крутит курсор, пока приложение не сообщит, что запустилось,
 // или до таймаута. GTK делает это сам, а X11-бэкенд GLFW в Fyne — нет, поэтому сообщение
 // «remove» по протоколу startup-notification отправляем здесь.
+//
+// Сообщение идёт через X11 (libX11), в Wayland-сессии — через XWayland. В сборке с тегом wayland
+// без x11 (чистый Wayland, без X11-библиотек) отправки нет: Complete только чистит окружение.
 package startupnotify
 
 import (

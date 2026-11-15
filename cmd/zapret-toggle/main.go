@@ -9,7 +9,8 @@ import (
 )
 
 func main() {
-	// ID совпадает с именем .desktop-файла: по нему GNOME находит ярлык окна под Wayland (app_id).
+	// ID совпадает с именем .desktop-файла: по нему оболочка (GNOME, KDE Plasma) находит
+	// ярлык окна под Wayland (app_id).
 	a := app.NewWithID("zapret-toggle")
 	a.SetIcon(assets.Icon)
 	ui.New(a).Run()

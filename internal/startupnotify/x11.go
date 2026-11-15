@@ -1,4 +1,7 @@
-//go:build linux && cgo
+//go:build linux && cgo && (x11 || !wayland)
+
+// Не собирается только с тегом wayland без x11 (чистый Wayland): как и GLFW, такая сборка
+// не линкуется с libX11. Без тегов и с x11 всё как раньше.
 
 package startupnotify
 
