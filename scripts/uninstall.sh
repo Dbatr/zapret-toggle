@@ -58,6 +58,15 @@ if [[ -n $user && $user != root ]]; then
 		if command -v update-desktop-database >/dev/null; then
 			as_user update-desktop-database "$home/.local/share/applications" || true
 		fi
+		# Как в install.sh: оболочки замечают пропажу иконки по времени изменения каталога темы,
+		# кэш GTK обновляется, только если он уже есть.
+		hicolor=$home/.local/share/icons/hicolor
+		if as_user test -d "$hicolor"; then
+			as_user touch "$hicolor" || true
+			if command -v gtk-update-icon-cache >/dev/null && as_user test -f "$hicolor/icon-theme.cache"; then
+				as_user gtk-update-icon-cache -q -t -f "$hicolor" || true
+			fi
+		fi
 		if ((purge)); then
 			step "Удаление настроек"
 			as_user rm -rf "$home/.config/zapret-toggle" "$home/.config/fyne/zapret-toggle"

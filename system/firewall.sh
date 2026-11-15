@@ -1,5 +1,6 @@
 #!/bin/bash
-# Правила nftables для zapret-dy: своя таблица inet zapretdy, с firewalld не пересекается.
+# Правила nftables для zapret-dy: своя таблица inet zapretdy — с firewalld, ufw и чужими
+# правилами не пересекается.
 #
 #   firewall.sh up <slug>   — (пере)создать таблицу с портами из strategies/<slug>.env
 #   firewall.sh down        — удалить таблицу (без ошибки, если её нет)
