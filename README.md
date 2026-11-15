@@ -1,4 +1,8 @@
-# Zapret Toggle
+<p align="center">
+  <img src="assets/icon.png" width="112" alt="Иконка Zapret Toggle">
+</p>
+
+<h1 align="center">Zapret Toggle</h1>
 
 Маленькое приложение для Linux с systemd: одна кнопка включает и выключает
 [zapret](https://github.com/bol-van/zapret) (обход DPI) **только для YouTube и Discord**.
@@ -127,6 +131,10 @@ sudo scripts/install.sh      # или: make install
 Повторный запуск безопасен (так же обновляются файлы после `git pull`).
 
 ## Использование
+
+<p align="center">
+  <img src="docs/screenshot.png" width="360" alt="Окно Zapret Toggle: zapret включён, стратегия general">
+</p>
 
 Запусти **Zapret Toggle** из меню приложений и нажми на круглую кнопку:
 
