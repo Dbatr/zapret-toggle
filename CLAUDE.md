@@ -1,7 +1,11 @@
 # zapret-toggle — заметки для Claude Code
 
-Десктоп-приложение (Go + Fyne v2.8, Fedora/GNOME): одна кнопка включает/выключает zapret1 (nfqws v72.13)
+Десктоп-приложение (Go + Fyne v2.8): одна кнопка включает/выключает zapret1 (nfqws v72.13)
 только для YouTube и Discord, со стратегиями Flowseal. Интерфейс, README и сообщения — на русском.
+
+Работает на systemd-дистрибутивах x86_64 (Fedora, Debian/Ubuntu, Arch и производные, openSUSE)
+в любой оболочке (GNOME, KDE Plasma, XFCE, Cinnamon, MATE, LXQt, Budgie, i3, sway; X11 и Wayland).
+Основная машина разработки — Fedora/GNOME: поведение и безопасность на ней менять нельзя.
 
 ## Архитектура
 
@@ -10,6 +14,8 @@
   даже при `StartupNotify=false`, а X11-бэкенд GLFW startup notification не завершает — курсор «загрузка»
   крутился до таймаута. Поэтому `internal/startupnotify` (cgo, libX11) в `OnStarted` шлёт X11-сообщение
   `remove: ID="…"` (_NET_STARTUP_INFO_BEGIN/_NET_STARTUP_INFO по 20 байт), как GTK.
+  `x11.go` собирается при `linux && cgo && (x11 || !wayland)`; с одним тегом `wayland` вместо него
+  заглушка `x11_other.go` — сборка «только Wayland» не линкуется с libX11.
 - `internal/service` — `systemctl` через exec, без root (polkit). `Start` сначала останавливает
   другие `zapret-dy@*` (общие таблица nft и очередь 200), после `start` ~1.5 с следит, что юнит
   не ушёл в failed/auto-restart (Type=simple отвечает «ок» до разбора аргументов nfqws).
@@ -39,6 +45,21 @@
   (белый список опций nfqws и путей только в `fake/`/`lists/`, затем `nfqws --dry-run`; не прошедшие
   выкидываются). Белый список — граница доверия к Flowseal: nfqws стартует от root, а getopt_long
   принимает сокращения, поэтому имена опций сверяются целиком.
+  - `install.sh` название дистрибутива не проверяет — только возможности: x86_64, systemd
+    (`/run/systemd/system`), `nft` (под root — `nft list tables`), polkit с `rules.d` (0.106+),
+    python3, make, runuser и зависимости сборки. Все проблемы собираются в список и печатаются
+    разом с одной командой установки пакетов; сам он пакеты не ставит. `--check` — только проверки,
+    можно без sudo. `restorecon` — только если SELinux включён (`selinuxenabled`/`getenforce`)
+    и команда есть. Каталог polkit-правил, если его нет: с группой `polkitd` — `root:polkitd 750`,
+    без неё — `root:root 755`.
+  - `platform.sh` (подключается через source) — пакетный менеджер по `ID`/`ID_LIKE` из os-release
+    (dnf, apt, pacman, zypper) и имена пакетов для подсказок. Таблица пакетов продублирована
+    в README («Зависимости») — менять вместе.
+  - `build-deps.sh` — `tags` (теги сборки по заголовкам), `check` (Go, компилятор C, pkg-config,
+    OpenGL, заголовки под теги), `report` (то же для `install.sh`, который запускает его от имени
+    пользователя), `cflags` (пути `-I` для CGO_CFLAGS).
+  - `test-scripts.sh` — тесты `platform.sh` и `build-deps.sh` с подменными os-release, go, gcc
+    и pkg-config; входит в `make test`.
 - `third_party/` — nfqws и Flowseal; руками не правим, Flowseal обновляет `update-flowseal.sh`.
 
 ## Инварианты
@@ -49,7 +70,17 @@
 - fwmark `0x40000000` и очередь `200` — одинаковые в `run.sh`, `firewall.sh` и `check-strategies.sh`.
 - Права в `/opt/zapret-dy`: каталоги 755, файлы 644, исполняемые 755 — nfqws работает не от root.
 - Только YouTube и Discord: без ipset-all, GameFilter, Cloudflare-списков (это делает convert.py).
-- sudo в этой среде не запускать; install/uninstall проверяются shellcheck и сухим прогоном.
+- sudo в этой среде не запускать; install/uninstall проверяются shellcheck, `scripts/install.sh --check`
+  и прогоном в контейнере (см. «Проверено»).
+- Никаких проверок вида `ID=fedora`: скрипты смотрят на возможности системы, а дистрибутив нужен
+  только для подсказки, какой командой поставить пакеты. Отсутствие SELinux и `restorecon` — не ошибка.
+- `go` в go.mod не понижать: Go от 1.21 сам скачивает нужный тулчейн (`export GOTOOLCHAIN ?= auto`
+  в Makefile; при достаточно новом Go это ничего не меняет), для более старого — понятная ошибка.
+- Теги сборки выбирает Makefile через `scripts/build-deps.sh tags`: есть заголовки X11 и Wayland —
+  без тегов (оба бэкенда GLFW), только X11 — `x11`, только Wayland — `wayland`, ничего — ошибка
+  с подсказкой. Модули pkg-config: X11 — `x11 xcursor xrandr xinerama xi xxf86vm`, Wayland —
+  `wayland-client wayland-cursor wayland-egl xkbcommon egl`. Явные `TAGS=x11`/`TAGS=wayland`/`TAGS=`
+  (оба) имеют приоритет.
 
 ## Проверено
 
@@ -63,13 +94,29 @@
   с `nnp_transition` разрешён. `MemoryDenyWriteExecute` включать нельзя: nfqws упакован и делает память
   исполняемой через mprotect — падал с SIGSEGV сразу после старта. Настройки юнита можно прогнать без
   root: `systemd-run --user --wait --pipe -p <настройка>… /opt/zapret-dy/nfqws --dry-run …`.
-- GLFW в Fyne 2.8 по умолчанию требует заголовки Wayland; без них Makefile собирает с `-tags x11`.
+- GLFW в Fyne 2.8 по умолчанию требует заголовки и X11, и Wayland; теги `x11`/`wayland` оставляют
+  один бэкенд. GLFW подключает заголовки без pkg-config, поэтому: Wayland-бэкенду нужен ещё
+  `EGL/egl.h` (в openSUSE — отдельный пакет `Mesa-libEGL-devel`), а в openSUSE заголовки Wayland
+  лежат в `/usr/include/wayland` — Makefile добавляет `pkg-config --cflags-only-I` в `CGO_CFLAGS`
+  (только если там не пусто; на Fedora, Debian и Arch переменная не трогается).
+- Другие дистрибутивы проверяются в rootless podman (сборка — от пользователя в контейнере):
+  Debian 13, Ubuntu 24.04, Arch, openSUSE Tumbleweed — пакеты из подсказок, `make check`, сборки
+  «только X11», «только Wayland» (бинарник без `NEEDED libX11`) и с обоими бэкендами; Go 1.22/1.24
+  из Debian/Ubuntu сам скачивает 1.26.10. Полная установка — в контейнере с systemd
+  (`podman run --systemd=always --cap-add NET_ADMIN,NET_RAW … /sbin/init`, скрипт от root
+  с `SUDO_USER=<пользователь>`): юнит стартует, таблица nft создаётся и удаляется. В rootless-контейнере
+  `nfqws --dry-run` падает с `setgroups: Invalid argument` — uid 0x7FFFFFFF не отображён в user
+  namespace; только для такого теста nfqws в копии репозитория заменяется обёрткой с `--uid=0:0`.
+- В оболочках, кроме GNOME, само окно не запускалось (только сборка и установка): работа в KDE,
+  XFCE, sway и т. д. и нативный Wayland-бэкенд проверены не были.
 
 ## Команды
 
 ```bash
-make check                        # gofmt + shellcheck + vet + test + build
-make build TAGS=x11               # явно только X11
+make check                        # gofmt + shellcheck + vet + test (скрипты и Go) + build
+make build TAGS=x11               # явно только X11; TAGS=wayland — только Wayland; TAGS= — оба
+scripts/install.sh --check        # проверки установщика без изменений в системе (можно без sudo)
+scripts/build-deps.sh check       # чего не хватает для сборки
 systemd-analyze verify system/zapret-dy@.service   # ругается на пути, пока /opt/zapret-dy не установлен
 ```
 
